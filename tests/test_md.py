@@ -137,6 +137,6 @@ def test_toggle_empty_title_and_content():
 
 
 def test_toggle_with_title_and_content():
-    result = md.toggle("title", "content").replace(" ", "")
-    expected_output = "<details><summary>title</summary>content</details>"
+    result = md.toggle("title", "content")
+    expected_output = "- title\n\tcontent"
     assert result == expected_output

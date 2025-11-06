@@ -66,7 +66,7 @@ class NotionToMarkdownBase:
                     toggle_children_md = self.to_markdown_string(block['children'])
                     md_output[page_identifier] = md_output.get(page_identifier, '')
                     md_output[page_identifier] += md.toggle(block['parent'],
-                                                            toggle_children_md.get('parent', ''))
+                                                            toggle_children_md.get('parent', '')) + '\n'
 
                 else:
                     md_str = self.to_markdown_string(block['children'],

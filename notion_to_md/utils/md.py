@@ -128,7 +128,10 @@ def divider() -> str:
 def toggle(summary: Optional[str] = None, children: Optional[str] = None) -> str:
     if not summary:
         return children or ''
-    return f"<details><summary>{summary}</summary>{children or ''}</details>"
+    result = f"- {summary}"
+    if children:
+        result += f"\n{add_tab_space(children, 1)}"
+    return result
 
 
 def table(cells: List[List[str]]) -> str:

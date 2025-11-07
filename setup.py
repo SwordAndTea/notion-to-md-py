@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="notion-to-md-py",  # Replace with your package name
-    version="0.1.3",
+    version="0.1.4",
     packages=find_packages(),  # Automatically include the submodules
     install_requires=[
         "httpx",  # Required based on `md.py`

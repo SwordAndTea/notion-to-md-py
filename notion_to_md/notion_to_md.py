@@ -656,4 +656,4 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
 
             parsed_data += plain_text
 
-        return parsed_data
+        return parsed_data + "\n"

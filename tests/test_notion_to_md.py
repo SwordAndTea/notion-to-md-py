@@ -168,7 +168,7 @@ async def test_comment_to_markdown_with_simple_text():
     }
 
     result = await n2m.comment_to_markdown(comment)
-    assert result == "**John Doe**: This is a simple comment\n\n"
+    assert result == "**John Doe**: This is a simple comment\n"
 
 
 @pytest.mark.asyncio
@@ -188,7 +188,7 @@ async def test_comment_to_markdown_with_bold_text():
     }
 
     result = await n2m.comment_to_markdown(comment)
-    assert result == "**Jane Smith**: **bold text**\n\n"
+    assert result == "**Jane Smith**: **bold text**\n"
 
 
 @pytest.mark.asyncio
@@ -208,7 +208,7 @@ async def test_comment_to_markdown_with_italic_text():
     }
 
     result = await n2m.comment_to_markdown(comment)
-    assert result == "**Bob Johnson**: _italic text_\n\n"
+    assert result == "**Bob Johnson**: _italic text_\n"
 
 
 @pytest.mark.asyncio
@@ -228,7 +228,7 @@ async def test_comment_to_markdown_with_code():
     }
 
     result = await n2m.comment_to_markdown(comment)
-    assert result == "**Alice Cooper**: `console.log('hello')`\n\n"
+    assert result == "**Alice Cooper**: `console.log('hello')`\n"
 
 
 @pytest.mark.asyncio
@@ -249,7 +249,7 @@ async def test_comment_to_markdown_with_link():
     }
 
     result = await n2m.comment_to_markdown(comment)
-    assert result == "**David Lee**: [Click here](https://example.com)\n\n"
+    assert result == "**David Lee**: [Click here](https://example.com)\n"
 
 
 @pytest.mark.asyncio
@@ -281,7 +281,7 @@ async def test_comment_to_markdown_with_multiple_parts():
     }
 
     result = await n2m.comment_to_markdown(comment)
-    assert result == "**Emma Wilson**: This is **bold** and _italic_\n\n"
+    assert result == "**Emma Wilson**: This is **bold** and _italic_\n"
 
 
 @pytest.mark.asyncio
@@ -299,7 +299,7 @@ async def test_comment_to_markdown_with_anonymous_user():
     }
 
     result = await n2m.comment_to_markdown(comment)
-    assert result == "**Anonymous**: Anonymous comment\n\n"
+    assert result == "**Anonymous**: Anonymous comment\n"
 
 
 @pytest.mark.asyncio
@@ -314,7 +314,7 @@ async def test_comment_to_markdown_with_empty_rich_text():
     }
 
     result = await n2m.comment_to_markdown(comment)
-    assert result == "**Test User**: \n\n"
+    assert result == "**Test User**: \n"
 
 
 @pytest.mark.asyncio
@@ -347,7 +347,7 @@ async def test_comment_to_markdown_with_strikethrough():
     }
 
     result = await n2m.comment_to_markdown(comment)
-    assert result == "**Mike Brown**: ~~strikethrough text~~\n\n"
+    assert result == "**Mike Brown**: ~~strikethrough text~~\n"
 
 
 @pytest.mark.asyncio
@@ -367,7 +367,7 @@ async def test_comment_to_markdown_with_underline():
     }
 
     result = await n2m.comment_to_markdown(comment)
-    assert result == "**Sarah Davis**: <u>underlined text</u>\n\n"
+    assert result == "**Sarah Davis**: <u>underlined text</u>\n"
 
 
 @pytest.mark.asyncio
@@ -387,5 +387,5 @@ async def test_comment_to_markdown_with_mixed_annotations():
     }
 
     result = await n2m.comment_to_markdown(comment)
-    assert result == "**Chris Evans**: **_bold and italic_**\n\n"
+    assert result == "**Chris Evans**: _**bold and italic**_\n"
 

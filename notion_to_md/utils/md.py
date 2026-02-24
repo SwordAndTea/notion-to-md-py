@@ -114,7 +114,7 @@ def add_tab_space(text: str, n: int = 0) -> str:
     if n <= 0:
         return text
 
-    tab = '\t'
+    tab = '    '
     if '\n' in text:
         lines = text.split('\n')
         return '\n'.join(f'{tab * n}{line}' for line in lines)
@@ -128,7 +128,7 @@ def divider() -> str:
 def toggle(summary: Optional[str] = None, children: Optional[str] = None) -> str:
     if not summary:
         return children or ''
-    return f"<details><summary>{summary}</summary>{children or ''}</details>"
+    return f"<details>\n<summary>{summary}</summary>\n{children or ''}\n</details>"
 
 
 def table(cells: List[List[str]]) -> str:

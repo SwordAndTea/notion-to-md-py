@@ -128,6 +128,18 @@ def test_image_to_base64():
     )
 
 
+def test_add_tab_space_uses_spaces():
+    result = md.add_tab_space("- item", 1)
+    assert result == "    - item"
+    assert "\t" not in result
+
+
+def test_add_tab_space_multiline():
+    result = md.add_tab_space("line1\nline2", 2)
+    assert result == "        line1\n        line2"
+    assert "\t" not in result
+
+
 def test_toggle_without_title():
     assert md.toggle(None, "content").replace(" ", "") == "content"
 
@@ -137,6 +149,6 @@ def test_toggle_empty_title_and_content():
 
 
 def test_toggle_with_title_and_content():
-    result = md.toggle("title", "content").replace(" ", "")
-    expected_output = "<details><summary>title</summary>content</details>"
+    result = md.toggle("title", "content")
+    expected_output = "<details>\n<summary>title</summary>\ncontent\n</details>"
     assert result == expected_output

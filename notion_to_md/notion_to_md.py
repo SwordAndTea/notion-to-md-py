@@ -217,8 +217,7 @@ class NotionToMarkdown(NotionToMarkdownBase):
                     else block_content['file']['url'])
 
             image_title = (image_caption_plain.strip() or
-                           link.split('/')[-1] if '/' in link
-                           else image_title)
+                           (link.split('/')[-1] if '/' in link else image_title))
 
             return md.image(image_title, link, self.config['convert_images_to_base64'])
 
@@ -243,7 +242,7 @@ class NotionToMarkdown(NotionToMarkdownBase):
                         if file_type == 'external'
                         else block_content['file']['url'])
 
-                title = caption.strip() or link.split('/')[-1] if '/' in link else title
+                title = caption.strip() or (link.split('/')[-1] if '/' in link else title)
                 return md.link(title, link)
 
 
@@ -360,7 +359,7 @@ class NotionToMarkdown(NotionToMarkdownBase):
         elif block_type == "callout":
             callout_string = ""
             if not block['has_children']:
-                return md.callout(callout_string, block['callout'].get('icon'))
+                return md.callout(parsed_data, block['callout'].get('icon'))
 
             if block['id'] in _visited_block_ids:
                 return md.callout(parsed_data, block['callout'].get('icon'))
@@ -511,8 +510,7 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
                     else block_content['file']['url'])
 
             image_title = (image_caption_plain.strip() or
-                           link.split('/')[-1] if '/' in link
-                           else image_title)
+                           (link.split('/')[-1] if '/' in link else image_title))
 
             return await md.image_async(image_title, link, self.config['convert_images_to_base64'])
 
@@ -537,7 +535,7 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
                         if file_type == 'external'
                         else block_content['file']['url'])
 
-                title = caption.strip() or link.split('/')[-1] if '/' in link else title
+                title = caption.strip() or (link.split('/')[-1] if '/' in link else title)
                 return md.link(title, link)
 
 
@@ -654,7 +652,7 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
         elif block_type == "callout":
             callout_string = ""
             if not block['has_children']:
-                return md.callout(callout_string, block['callout'].get('icon'))
+                return md.callout(parsed_data, block['callout'].get('icon'))
 
             if block['id'] in _visited_block_ids:
                 return md.callout(parsed_data, block['callout'].get('icon'))
@@ -697,7 +695,8 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
 
         parsed_data = ""
         block_content = comment.get("rich_text", [])
-        name = comment.get("display_name", {}).get("resolved_name", "Anonymous")
+        display_name = comment.get("display_name") or {}
+        name = display_name.get("resolved_name") or "Anonymous"
         if name:
             parsed_data += f"**{name}**: "
         for content in block_content:

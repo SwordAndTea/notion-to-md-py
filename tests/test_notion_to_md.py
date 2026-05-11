@@ -149,3 +149,522 @@ async def test_custom_transformer_default_implementation_works_async():
     })
 
     assert md == "---"
+
+
+@pytest.mark.asyncio
+async def test_comment_to_markdown_with_simple_text():
+    n2m = NotionToMarkdownAsync(notion_client={})
+
+    comment = {
+        "rich_text": [
+            {
+                "plain_text": "This is a simple comment",
+                "annotations": {}
+            }
+        ],
+        "display_name": {
+            "resolved_name": "John Doe"
+        }
+    }
+
+    result = await n2m.comment_to_markdown(comment)
+    assert result == "**John Doe**: This is a simple comment\n"
+
+
+@pytest.mark.asyncio
+async def test_comment_to_markdown_with_bold_text():
+    n2m = NotionToMarkdownAsync(notion_client={})
+
+    comment = {
+        "rich_text": [
+            {
+                "plain_text": "bold text",
+                "annotations": {"bold": True}
+            }
+        ],
+        "display_name": {
+            "resolved_name": "Jane Smith"
+        }
+    }
+
+    result = await n2m.comment_to_markdown(comment)
+    assert result == "**Jane Smith**: **bold text**\n"
+
+
+@pytest.mark.asyncio
+async def test_comment_to_markdown_with_italic_text():
+    n2m = NotionToMarkdownAsync(notion_client={})
+
+    comment = {
+        "rich_text": [
+            {
+                "plain_text": "italic text",
+                "annotations": {"italic": True}
+            }
+        ],
+        "display_name": {
+            "resolved_name": "Bob Johnson"
+        }
+    }
+
+    result = await n2m.comment_to_markdown(comment)
+    assert result == "**Bob Johnson**: _italic text_\n"
+
+
+@pytest.mark.asyncio
+async def test_comment_to_markdown_with_code():
+    n2m = NotionToMarkdownAsync(notion_client={})
+
+    comment = {
+        "rich_text": [
+            {
+                "plain_text": "console.log('hello')",
+                "annotations": {"code": True}
+            }
+        ],
+        "display_name": {
+            "resolved_name": "Alice Cooper"
+        }
+    }
+
+    result = await n2m.comment_to_markdown(comment)
+    assert result == "**Alice Cooper**: `console.log('hello')`\n"
+
+
+@pytest.mark.asyncio
+async def test_comment_to_markdown_with_link():
+    n2m = NotionToMarkdownAsync(notion_client={})
+
+    comment = {
+        "rich_text": [
+            {
+                "plain_text": "Click here",
+                "annotations": {},
+                "href": "https://example.com"
+            }
+        ],
+        "display_name": {
+            "resolved_name": "David Lee"
+        }
+    }
+
+    result = await n2m.comment_to_markdown(comment)
+    assert result == "**David Lee**: [Click here](https://example.com)\n"
+
+
+@pytest.mark.asyncio
+async def test_comment_to_markdown_with_multiple_parts():
+    n2m = NotionToMarkdownAsync(notion_client={})
+
+    comment = {
+        "rich_text": [
+            {
+                "plain_text": "This is ",
+                "annotations": {}
+            },
+            {
+                "plain_text": "bold",
+                "annotations": {"bold": True}
+            },
+            {
+                "plain_text": " and ",
+                "annotations": {}
+            },
+            {
+                "plain_text": "italic",
+                "annotations": {"italic": True}
+            }
+        ],
+        "display_name": {
+            "resolved_name": "Emma Wilson"
+        }
+    }
+
+    result = await n2m.comment_to_markdown(comment)
+    assert result == "**Emma Wilson**: This is **bold** and _italic_\n"
+
+
+@pytest.mark.asyncio
+async def test_comment_to_markdown_with_anonymous_user():
+    n2m = NotionToMarkdownAsync(notion_client={})
+
+    comment = {
+        "rich_text": [
+            {
+                "plain_text": "Anonymous comment",
+                "annotations": {}
+            }
+        ],
+        "display_name": {}
+    }
+
+    result = await n2m.comment_to_markdown(comment)
+    assert result == "**Anonymous**: Anonymous comment\n"
+
+
+@pytest.mark.asyncio
+async def test_comment_to_markdown_with_empty_rich_text():
+    n2m = NotionToMarkdownAsync(notion_client={})
+
+    comment = {
+        "rich_text": [],
+        "display_name": {
+            "resolved_name": "Test User"
+        }
+    }
+
+    result = await n2m.comment_to_markdown(comment)
+    assert result == "**Test User**: \n"
+
+
+@pytest.mark.asyncio
+async def test_comment_to_markdown_with_invalid_input():
+    n2m = NotionToMarkdownAsync(notion_client={})
+
+    # Test with non-dict input
+    result = await n2m.comment_to_markdown("invalid")
+    assert result == ""
+
+    # Test with dict missing rich_text
+    result = await n2m.comment_to_markdown({"display_name": {"resolved_name": "Test"}})
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_comment_to_markdown_with_strikethrough():
+    n2m = NotionToMarkdownAsync(notion_client={})
+
+    comment = {
+        "rich_text": [
+            {
+                "plain_text": "strikethrough text",
+                "annotations": {"strikethrough": True}
+            }
+        ],
+        "display_name": {
+            "resolved_name": "Mike Brown"
+        }
+    }
+
+    result = await n2m.comment_to_markdown(comment)
+    assert result == "**Mike Brown**: ~~strikethrough text~~\n"
+
+
+@pytest.mark.asyncio
+async def test_comment_to_markdown_with_underline():
+    n2m = NotionToMarkdownAsync(notion_client={})
+
+    comment = {
+        "rich_text": [
+            {
+                "plain_text": "underlined text",
+                "annotations": {"underline": True}
+            }
+        ],
+        "display_name": {
+            "resolved_name": "Sarah Davis"
+        }
+    }
+
+    result = await n2m.comment_to_markdown(comment)
+    assert result == "**Sarah Davis**: <u>underlined text</u>\n"
+
+
+@pytest.mark.asyncio
+async def test_comment_to_markdown_with_mixed_annotations():
+    n2m = NotionToMarkdownAsync(notion_client={})
+
+    comment = {
+        "rich_text": [
+            {
+                "plain_text": "bold and italic",
+                "annotations": {"bold": True, "italic": True}
+            }
+        ],
+        "display_name": {
+            "resolved_name": "Chris Evans"
+        }
+    }
+
+    result = await n2m.comment_to_markdown(comment)
+    assert result == "**Chris Evans**: _**bold and italic**_\n"
+
+
+@pytest.mark.asyncio
+async def test_block_list_to_markdown_with_parse_comments_enabled():
+    mock_client = AsyncMock()
+    mock_client.comments.list = AsyncMock()
+
+    # Mock the comments list response
+    mock_client.comments.list.return_value = {
+        "results": [
+            {
+                "rich_text": [
+                    {
+                        "plain_text": "Great point!",
+                        "annotations": {}
+                    }
+                ],
+                "display_name": {
+                    "resolved_name": "John Doe"
+                }
+            }
+        ]
+    }
+
+    n2m = NotionToMarkdownAsync(notion_client=mock_client, config={"parse_comments": True})
+
+    blocks = [
+        {
+            "id": "block-1",
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [
+                    {
+                        "plain_text": "This is a paragraph",
+                        "annotations": {}
+                    }
+                ]
+            },
+            "has_children": False
+        }
+    ]
+
+    result = await n2m.block_list_to_markdown(blocks)
+
+    # Verify comments.list was called with the block id
+    mock_client.comments.list.assert_called_once_with(block_id="block-1")
+
+    # Verify the result includes both the block content and comments
+    assert "This is a paragraph" in result[0]["parent"]
+    assert "Comments:" in result[0]["parent"]
+    assert "**John Doe**: Great point!" in result[0]["parent"]
+
+
+@pytest.mark.asyncio
+async def test_block_list_to_markdown_with_parse_comments_disabled():
+    mock_client = AsyncMock()
+    mock_client.comments.list = AsyncMock()
+
+    n2m = NotionToMarkdownAsync(notion_client=mock_client, config={"parse_comments": False})
+
+    blocks = [
+        {
+            "id": "block-1",
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [
+                    {
+                        "plain_text": "This is a paragraph",
+                        "annotations": {}
+                    }
+                ]
+            },
+            "has_children": False
+        }
+    ]
+
+    result = await n2m.block_list_to_markdown(blocks)
+
+    # Verify comments.list was NOT called when parse_comments is False
+    mock_client.comments.list.assert_not_called()
+
+    # Verify the result includes only the block content, no comments
+    assert "This is a paragraph" in result[0]["parent"]
+    assert "Comments:" not in result[0]["parent"]
+
+
+@pytest.mark.asyncio
+async def test_block_list_to_markdown_with_multiple_comments():
+    mock_client = AsyncMock()
+    mock_client.comments.list = AsyncMock()
+
+    # Mock multiple comments
+    mock_client.comments.list.return_value = {
+        "results": [
+            {
+                "rich_text": [
+                    {
+                        "plain_text": "First comment",
+                        "annotations": {}
+                    }
+                ],
+                "display_name": {
+                    "resolved_name": "Alice"
+                }
+            },
+            {
+                "rich_text": [
+                    {
+                        "plain_text": "Second comment",
+                        "annotations": {}
+                    }
+                ],
+                "display_name": {
+                    "resolved_name": "Bob"
+                }
+            }
+        ]
+    }
+
+    n2m = NotionToMarkdownAsync(notion_client=mock_client, config={"parse_comments": True})
+
+    blocks = [
+        {
+            "id": "block-1",
+            "type": "heading_1",
+            "heading_1": {
+                "rich_text": [
+                    {
+                        "plain_text": "Important Heading",
+                        "annotations": {}
+                    }
+                ]
+            },
+            "has_children": False
+        }
+    ]
+
+    result = await n2m.block_list_to_markdown(blocks)
+
+    # Verify both comments are included
+    assert "Comments:" in result[0]["parent"]
+    assert "**Alice**: First comment" in result[0]["parent"]
+    assert "**Bob**: Second comment" in result[0]["parent"]
+
+
+@pytest.mark.asyncio
+async def test_block_list_to_markdown_with_no_comments():
+    mock_client = AsyncMock()
+    mock_client.comments.list = AsyncMock()
+
+    # Mock empty comments response
+    mock_client.comments.list.return_value = {
+        "results": []
+    }
+
+    n2m = NotionToMarkdownAsync(notion_client=mock_client, config={"parse_comments": True})
+
+    blocks = [
+        {
+            "id": "block-1",
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [
+                    {
+                        "plain_text": "No comments here",
+                        "annotations": {}
+                    }
+                ]
+            },
+            "has_children": False
+        }
+    ]
+
+    result = await n2m.block_list_to_markdown(blocks)
+
+    # Verify comments.list was called
+    mock_client.comments.list.assert_called_once_with(block_id="block-1")
+
+    # Verify "Comments:" section is NOT added when there are no comments
+    assert "No comments here" in result[0]["parent"]
+    assert "Comments:" not in result[0]["parent"]
+
+
+@pytest.mark.asyncio
+async def test_block_list_to_markdown_with_comments_on_different_block_types():
+    mock_client = AsyncMock()
+
+    # Set up different responses for different blocks
+    def comments_side_effect(block_id):
+        if block_id == "block-1":
+            return {
+                "results": [
+                    {
+                        "rich_text": [{"plain_text": "Comment on code", "annotations": {}}],
+                        "display_name": {"resolved_name": "Reviewer"}
+                    }
+                ]
+            }
+        return {"results": []}
+
+    mock_client.comments.list = AsyncMock(side_effect=comments_side_effect)
+
+    n2m = NotionToMarkdownAsync(notion_client=mock_client, config={"parse_comments": True})
+
+    blocks = [
+        {
+            "id": "block-1",
+            "type": "code",
+            "code": {
+                "rich_text": [{"plain_text": "print('hello')", "annotations": {}}],
+                "language": "python"
+            },
+            "has_children": False
+        },
+        {
+            "id": "block-2",
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [{"plain_text": "Regular text", "annotations": {}}]
+            },
+            "has_children": False
+        }
+    ]
+
+    result = await n2m.block_list_to_markdown(blocks)
+
+    # Verify comments were checked for both blocks
+    assert mock_client.comments.list.call_count == 2
+
+    # Verify comment appears only on the code block
+    assert "**Reviewer**: Comment on code" in result[0]["parent"]
+    assert "Comments:" not in result[1]["parent"]
+
+
+@pytest.mark.asyncio
+async def test_block_list_to_markdown_with_comments_containing_annotations():
+    mock_client = AsyncMock()
+    mock_client.comments.list = AsyncMock()
+
+    # Mock comment with bold and link
+    mock_client.comments.list.return_value = {
+        "results": [
+            {
+                "rich_text": [
+                    {
+                        "plain_text": "Check ",
+                        "annotations": {}
+                    },
+                    {
+                        "plain_text": "this link",
+                        "annotations": {"bold": True},
+                        "href": "https://example.com"
+                    }
+                ],
+                "display_name": {
+                    "resolved_name": "Sarah"
+                }
+            }
+        ]
+    }
+
+    n2m = NotionToMarkdownAsync(notion_client=mock_client, config={"parse_comments": True})
+
+    blocks = [
+        {
+            "id": "block-1",
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [{"plain_text": "Content", "annotations": {}}]
+            },
+            "has_children": False
+        }
+    ]
+
+    result = await n2m.block_list_to_markdown(blocks)
+
+    # Verify comment with formatting is correctly parsed
+    assert "**Sarah**: Check [**this link**](https://example.com)" in result[0]["parent"]
+
+

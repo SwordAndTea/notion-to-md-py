@@ -13,7 +13,8 @@ class NotionToMarkdownBase:
         default_config = {
             "separate_child_page": False,
             "convert_images_to_base64": False,
-            "parse_child_pages": True
+            "parse_child_pages": True,
+            "parse_comments": False,
         }
         self.config = {**default_config, **(config or {})}
         self.custom_transformers = {}
@@ -392,6 +393,14 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
                     (block['type'] == 'child_page' and not self.config['parse_child_pages'])):
                 continue
 
+            content = await self.block_to_markdown(block)
+            if self.config['parse_comments']:
+                comments = (await self.notion_client.comments.list(block_id=block['id'])).get('results', [])
+                if comments:
+                    content += "\n\nComments:\n"
+                    for c in comments:
+                        content += await self.comment_to_markdown(c) + "\n"
+
             if block.get('has_children'):
                 block_id = (block['synced_block']['synced_from']['block_id']
                             if block['type'] == 'synced_block' and
@@ -405,7 +414,7 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
                 md_blocks.append({
                     'type': block['type'],
                     'block_id': block['id'],
-                    'parent': await self.block_to_markdown(block),
+                    'parent': content,
                     'children': []
                 })
 
@@ -418,7 +427,7 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
             md_blocks.append({
                 'type': block['type'],
                 'block_id': block['id'],
-                'parent': await self.block_to_markdown(block),
+                'parent': content,
                 'children': []
             })
 
@@ -623,3 +632,28 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
             )
 
         return parsed_data
+
+    async def comment_to_markdown(self, comment: Dict) -> str:
+        """Convert a Notion comment to markdown"""
+        if not isinstance(comment, dict) or 'rich_text' not in comment:
+            return ""
+
+        parsed_data = ""
+        block_content = comment.get("rich_text", [])
+        name = comment.get("display_name", {}).get("resolved_name", "Anonymous")
+        if name:
+            parsed_data += f"**{name}**: "
+        for content in block_content:
+            plain_text = content.get("plain_text", "")
+            annotations = content.get("annotations", {})
+
+            # Apply annotations to plain_text
+            plain_text = self._apply_annotations(plain_text, annotations)
+
+            # Add link if present
+            if content.get("href"):
+                plain_text = md.link(plain_text, content["href"])
+
+            parsed_data += plain_text
+
+        return parsed_data + "\n"

@@ -122,10 +122,13 @@ class NotionToMarkdown(NotionToMarkdownBase):
 
     def block_list_to_markdown(self, blocks: List[Dict] = None,
                                total_pages: Optional[int] = None,
-                               md_blocks: List[Dict] = None) -> List[Dict]:
+                               md_blocks: List[Dict] = None,
+                               _visited_block_ids: Optional[set] = None) -> List[Dict]:
         """Convert Notion blocks to markdown blocks"""
         if md_blocks is None:
             md_blocks = []
+        if _visited_block_ids is None:
+            _visited_block_ids = set()
         if not blocks:
             return md_blocks
 
@@ -140,6 +143,15 @@ class NotionToMarkdown(NotionToMarkdownBase):
                                block['synced_block'].get('synced_from')
                             else block['id'])
 
+                if block_id in _visited_block_ids:
+                    md_blocks.append({
+                        'type': block['type'],
+                        'block_id': block['id'],
+                        'parent': self.block_to_markdown(block, _visited_block_ids),
+                        'children': []
+                    })
+                    continue
+
                 child_blocks = get_block_children(self.notion_client,
                                                   block_id,
                                                   total_pages)
@@ -147,31 +159,38 @@ class NotionToMarkdown(NotionToMarkdownBase):
                 md_blocks.append({
                     'type': block['type'],
                     'block_id': block['id'],
-                    'parent': self.block_to_markdown(block),
+                    'parent': self.block_to_markdown(block, _visited_block_ids),
                     'children': []
                 })
 
                 if not (block['type'] in self.custom_transformers):
-                    # append blocks to md_blocks[-1]['children']
-                    self.block_list_to_markdown(
-                        child_blocks,
-                        total_pages,
-                        md_blocks[-1]['children'])
+                    _visited_block_ids.add(block_id)
+                    try:
+                        self.block_list_to_markdown(
+                            child_blocks,
+                            total_pages,
+                            md_blocks[-1]['children'],
+                            _visited_block_ids)
+                    finally:
+                        _visited_block_ids.discard(block_id)
                 continue
 
             md_blocks.append({
                 'type': block['type'],
                 'block_id': block['id'],
-                'parent': self.block_to_markdown(block),
+                'parent': self.block_to_markdown(block, _visited_block_ids),
                 'children': []
             })
 
         return md_blocks
 
-    def block_to_markdown(self, block: Dict) -> str:
+    def block_to_markdown(self, block: Dict, _visited_block_ids: Optional[set] = None) -> str:
         """Convert a single Notion block to markdown"""
         if not isinstance(block, dict) or 'type' not in block:
             return ""
+
+        if _visited_block_ids is None:
+            _visited_block_ids = set()
 
         block_type = block['type']
         parsed_data = ""
@@ -198,8 +217,7 @@ class NotionToMarkdown(NotionToMarkdownBase):
                     else block_content['file']['url'])
 
             image_title = (image_caption_plain.strip() or
-                           link.split('/')[-1] if '/' in link
-                           else image_title)
+                           (link.split('/')[-1] if '/' in link else image_title))
 
             return md.image(image_title, link, self.config['convert_images_to_base64'])
 
@@ -224,7 +242,7 @@ class NotionToMarkdown(NotionToMarkdownBase):
                         if file_type == 'external'
                         else block_content['file']['url'])
 
-                title = caption.strip() or link.split('/')[-1] if '/' in link else title
+                title = caption.strip() or (link.split('/')[-1] if '/' in link else title)
                 return md.link(title, link)
 
 
@@ -341,10 +359,19 @@ class NotionToMarkdown(NotionToMarkdownBase):
         elif block_type == "callout":
             callout_string = ""
             if not block['has_children']:
-                return md.callout(callout_string, block['callout'].get('icon'))
+                return md.callout(parsed_data, block['callout'].get('icon'))
+
+            if block['id'] in _visited_block_ids:
+                return md.callout(parsed_data, block['callout'].get('icon'))
 
             callout_children_object = get_block_children(self.notion_client, block['id'], 100)
-            callout_children = self.block_list_to_markdown(callout_children_object)
+            _visited_block_ids.add(block['id'])
+            try:
+                callout_children = self.block_list_to_markdown(
+                    callout_children_object,
+                    _visited_block_ids=_visited_block_ids)
+            finally:
+                _visited_block_ids.discard(block['id'])
 
             callout_string += f"{parsed_data}\n"
             for child in callout_children:
@@ -381,10 +408,13 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
 
     async def block_list_to_markdown(self, blocks: List[Dict] = None,
                                      total_pages: Optional[int] = None,
-                                     md_blocks: List[Dict] = None) -> List[Dict]:
+                                     md_blocks: List[Dict] = None,
+                                     _visited_block_ids: Optional[set] = None) -> List[Dict]:
         """Convert Notion blocks to markdown blocks"""
         if md_blocks is None:
             md_blocks = []
+        if _visited_block_ids is None:
+            _visited_block_ids = set()
         if not blocks:
             return md_blocks
 
@@ -393,7 +423,7 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
                     (block['type'] == 'child_page' and not self.config['parse_child_pages'])):
                 continue
 
-            content = await self.block_to_markdown(block)
+            content = await self.block_to_markdown(block, _visited_block_ids)
             if self.config['parse_comments']:
                 comments = (await self.notion_client.comments.list(block_id=block['id'])).get('results', [])
                 if comments:
@@ -407,6 +437,15 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
                                block['synced_block'].get('synced_from')
                             else block['id'])
 
+                if block_id in _visited_block_ids:
+                    md_blocks.append({
+                        'type': block['type'],
+                        'block_id': block['id'],
+                        'parent': content,
+                        'children': []
+                    })
+                    continue
+
                 child_blocks = await get_block_children_async(self.notion_client,
                                                               block_id,
                                                               total_pages)
@@ -419,9 +458,14 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
                 })
 
                 if not (block['type'] in self.custom_transformers):
-                    await self.block_list_to_markdown(child_blocks,
-                                                      total_pages,
-                                                      md_blocks[-1]['children'])
+                    _visited_block_ids.add(block_id)
+                    try:
+                        await self.block_list_to_markdown(child_blocks,
+                                                          total_pages,
+                                                          md_blocks[-1]['children'],
+                                                          _visited_block_ids)
+                    finally:
+                        _visited_block_ids.discard(block_id)
                 continue
 
             md_blocks.append({
@@ -433,10 +477,13 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
 
         return md_blocks
 
-    async def block_to_markdown(self, block: Dict) -> str:
+    async def block_to_markdown(self, block: Dict, _visited_block_ids: Optional[set] = None) -> str:
         """Convert a single Notion block to markdown"""
         if not isinstance(block, dict) or 'type' not in block:
             return ""
+
+        if _visited_block_ids is None:
+            _visited_block_ids = set()
 
         block_type = block['type']
         parsed_data = ""
@@ -463,8 +510,7 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
                     else block_content['file']['url'])
 
             image_title = (image_caption_plain.strip() or
-                           link.split('/')[-1] if '/' in link
-                           else image_title)
+                           (link.split('/')[-1] if '/' in link else image_title))
 
             return await md.image_async(image_title, link, self.config['convert_images_to_base64'])
 
@@ -489,7 +535,7 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
                         if file_type == 'external'
                         else block_content['file']['url'])
 
-                title = caption.strip() or link.split('/')[-1] if '/' in link else title
+                title = caption.strip() or (link.split('/')[-1] if '/' in link else title)
                 return md.link(title, link)
 
 
@@ -606,10 +652,19 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
         elif block_type == "callout":
             callout_string = ""
             if not block['has_children']:
-                return md.callout(callout_string, block['callout'].get('icon'))
+                return md.callout(parsed_data, block['callout'].get('icon'))
+
+            if block['id'] in _visited_block_ids:
+                return md.callout(parsed_data, block['callout'].get('icon'))
 
             callout_children_object = await get_block_children_async(self.notion_client, block['id'], 100)
-            callout_children = await self.block_list_to_markdown(callout_children_object)
+            _visited_block_ids.add(block['id'])
+            try:
+                callout_children = await self.block_list_to_markdown(
+                    callout_children_object,
+                    _visited_block_ids=_visited_block_ids)
+            finally:
+                _visited_block_ids.discard(block['id'])
 
             callout_string += f"{parsed_data}\n"
             for child in callout_children:
@@ -640,7 +695,8 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
 
         parsed_data = ""
         block_content = comment.get("rich_text", [])
-        name = comment.get("display_name", {}).get("resolved_name", "Anonymous")
+        display_name = comment.get("display_name") or {}
+        name = display_name.get("resolved_name") or "Anonymous"
         if name:
             parsed_data += f"**{name}**: "
         for content in block_content:

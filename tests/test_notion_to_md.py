@@ -3,6 +3,52 @@ from unittest.mock import MagicMock, AsyncMock
 from notion_to_md import NotionToMarkdown, NotionToMarkdownAsync
 
 
+def _make_paragraph_block(block_id: str, text: str, has_children: bool = False) -> dict:
+    return {
+        "id": block_id,
+        "type": "paragraph",
+        "has_children": has_children,
+        "paragraph": {
+            "rich_text": [{
+                "type": "text",
+                "plain_text": text,
+                "annotations": {},
+            }],
+        },
+    }
+
+
+def _make_callout_block(block_id: str, text: str, has_children: bool = True) -> dict:
+    return {
+        "id": block_id,
+        "type": "callout",
+        "has_children": has_children,
+        "callout": {
+            "icon": None,
+            "rich_text": [{
+                "type": "text",
+                "plain_text": text,
+                "annotations": {},
+            }],
+        },
+    }
+
+
+def _make_synced_block(block_id: str, synced_from_id: str, has_children: bool = True) -> dict:
+    return {
+        "id": block_id,
+        "type": "synced_block",
+        "has_children": has_children,
+        "synced_block": {
+            "synced_from": {"block_id": synced_from_id} if synced_from_id else None,
+        },
+    }
+
+
+def _children_response(blocks):
+    return {"results": blocks, "next_cursor": None}
+
+
 def test_block_to_markdown_calls_custom_transformer():
     custom_transformer_mock = MagicMock()
     n2m = NotionToMarkdown(notion_client={})
@@ -668,3 +714,174 @@ async def test_block_list_to_markdown_with_comments_containing_annotations():
     assert "**Sarah**: Check [**this link**](https://example.com)" in result[0]["parent"]
 
 
+def test_block_list_to_markdown_breaks_circular_references():
+    block_a = _make_paragraph_block("A", "block A", has_children=True)
+    block_b = _make_paragraph_block("B", "block B", has_children=True)
+
+    children_by_id = {
+        "A": _children_response([block_b]),
+        "B": _children_response([block_a]),
+    }
+
+    notion_client = MagicMock()
+    notion_client.blocks.children.list.side_effect = lambda block_id, start_cursor=None: (
+        children_by_id[block_id]
+    )
+
+    n2m = NotionToMarkdown(notion_client=notion_client)
+
+    result = n2m.block_list_to_markdown([block_a])
+
+    assert len(result) == 1
+    assert result[0]["block_id"] == "A"
+    assert len(result[0]["children"]) == 1
+    assert result[0]["children"][0]["block_id"] == "B"
+    # B's child is A again — appended as a leaf since A is on the recursion path
+    assert len(result[0]["children"][0]["children"]) == 1
+    assert result[0]["children"][0]["children"][0]["block_id"] == "A"
+    assert result[0]["children"][0]["children"][0]["children"] == []
+
+
+def test_block_list_to_markdown_self_referential_block():
+    block_self = _make_paragraph_block("S", "loop", has_children=True)
+
+    notion_client = MagicMock()
+    notion_client.blocks.children.list.return_value = _children_response([block_self])
+
+    n2m = NotionToMarkdown(notion_client=notion_client)
+
+    result = n2m.block_list_to_markdown([block_self])
+
+    assert len(result) == 1
+    assert result[0]["block_id"] == "S"
+    assert len(result[0]["children"]) == 1
+    assert result[0]["children"][0]["block_id"] == "S"
+    assert result[0]["children"][0]["children"] == []
+
+
+def test_block_list_to_markdown_visits_same_block_in_separate_branches():
+    """A block legitimately reachable twice via different branches should be
+    processed in each branch — only ancestor cycles are skipped."""
+    shared = _make_paragraph_block("shared", "shared", has_children=True)
+    leaf = _make_paragraph_block("leaf", "leaf", has_children=False)
+    parent_one = _make_paragraph_block("P1", "p1", has_children=True)
+    parent_two = _make_paragraph_block("P2", "p2", has_children=True)
+
+    children_by_id = {
+        "P1": _children_response([shared]),
+        "P2": _children_response([shared]),
+        "shared": _children_response([leaf]),
+    }
+
+    notion_client = MagicMock()
+    notion_client.blocks.children.list.side_effect = lambda block_id, start_cursor=None: (
+        children_by_id[block_id]
+    )
+
+    n2m = NotionToMarkdown(notion_client=notion_client)
+
+    result = n2m.block_list_to_markdown([parent_one, parent_two])
+
+    assert len(result) == 2
+    assert result[0]["children"][0]["block_id"] == "shared"
+    assert result[0]["children"][0]["children"][0]["block_id"] == "leaf"
+    assert result[1]["children"][0]["block_id"] == "shared"
+    assert result[1]["children"][0]["children"][0]["block_id"] == "leaf"
+
+
+def test_block_list_to_markdown_breaks_nested_callout_cycle():
+    """Cycle across two callouts via a synced_block:
+    C1 (callout) > C2 (callout) > S (synced_block, synced_from=C1) > fetches C1's children -> C2 again.
+    Without threading visited_ids through block_to_markdown's callout case, this loops forever
+    because each callout starts a fresh visited set.
+    """
+    c1 = _make_callout_block("C1", "outer")
+    c2 = _make_callout_block("C2", "inner")
+    synced = _make_synced_block("S", synced_from_id="C1")
+
+    children_by_id = {
+        "C1": _children_response([c2]),
+        "C2": _children_response([synced]),
+    }
+
+    notion_client = MagicMock()
+    notion_client.blocks.children.list.side_effect = lambda block_id, start_cursor=None: (
+        children_by_id[block_id]
+    )
+
+    n2m = NotionToMarkdown(notion_client=notion_client)
+
+    result = n2m.block_list_to_markdown([c1])
+
+    assert len(result) == 1
+    assert result[0]["block_id"] == "C1"
+
+
+def test_block_to_markdown_callout_self_reference():
+    """A callout whose own child syncs from itself — block_to_markdown's callout case
+    must propagate visited_ids so the inner block_list_to_markdown detects the cycle."""
+    c = _make_callout_block("C", "self")
+    synced = _make_synced_block("S", synced_from_id="C")
+
+    notion_client = MagicMock()
+    notion_client.blocks.children.list.return_value = _children_response([synced])
+
+    n2m = NotionToMarkdown(notion_client=notion_client)
+    md_str = n2m.block_to_markdown(c)
+
+    assert isinstance(md_str, str)
+    assert "self" in md_str
+
+
+@pytest.mark.asyncio
+async def test_block_list_to_markdown_breaks_nested_callout_cycle_async():
+    c1 = _make_callout_block("C1", "outer")
+    c2 = _make_callout_block("C2", "inner")
+    synced = _make_synced_block("S", synced_from_id="C1")
+
+    children_by_id = {
+        "C1": _children_response([c2]),
+        "C2": _children_response([synced]),
+    }
+
+    async def fake_list(block_id, start_cursor=None):
+        return children_by_id[block_id]
+
+    notion_client = MagicMock()
+    notion_client.blocks.children.list = AsyncMock(side_effect=fake_list)
+
+    n2m = NotionToMarkdownAsync(notion_client=notion_client)
+
+    result = await n2m.block_list_to_markdown([c1])
+
+    assert len(result) == 1
+    assert result[0]["block_id"] == "C1"
+
+
+@pytest.mark.asyncio
+async def test_block_list_to_markdown_breaks_circular_references_async():
+    block_a = _make_paragraph_block("A", "block A", has_children=True)
+    block_b = _make_paragraph_block("B", "block B", has_children=True)
+
+    children_by_id = {
+        "A": _children_response([block_b]),
+        "B": _children_response([block_a]),
+    }
+
+    async def fake_list(block_id, start_cursor=None):
+        return children_by_id[block_id]
+
+    notion_client = MagicMock()
+    notion_client.blocks.children.list = AsyncMock(side_effect=fake_list)
+
+    n2m = NotionToMarkdownAsync(notion_client=notion_client)
+
+    result = await n2m.block_list_to_markdown([block_a])
+
+    assert len(result) == 1
+    assert result[0]["block_id"] == "A"
+    assert len(result[0]["children"]) == 1
+    assert result[0]["children"][0]["block_id"] == "B"
+    assert len(result[0]["children"][0]["children"]) == 1
+    assert result[0]["children"][0]["children"][0]["block_id"] == "A"
+    assert result[0]["children"][0]["children"][0]["children"] == []

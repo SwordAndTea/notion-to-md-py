@@ -885,3 +885,28 @@ async def test_block_list_to_markdown_breaks_circular_references_async():
     assert len(result[0]["children"][0]["children"]) == 1
     assert result[0]["children"][0]["children"][0]["block_id"] == "A"
     assert result[0]["children"][0]["children"][0]["children"] == []
+
+
+def test_block_list_to_markdown_skips_blocks_without_type():
+    n2m = NotionToMarkdown(notion_client={})
+
+    result = n2m.block_list_to_markdown([
+        {"id": "typeless", "has_children": False},
+        _make_paragraph_block("P", "kept", has_children=False),
+    ])
+
+    assert len(result) == 1
+    assert result[0]["block_id"] == "P"
+
+
+@pytest.mark.asyncio
+async def test_block_list_to_markdown_skips_blocks_without_type_async():
+    n2m = NotionToMarkdownAsync(notion_client=AsyncMock())
+
+    result = await n2m.block_list_to_markdown([
+        {"id": "typeless", "has_children": False},
+        _make_paragraph_block("P", "kept", has_children=False),
+    ])
+
+    assert len(result) == 1
+    assert result[0]["block_id"] == "P"

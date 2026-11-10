@@ -133,6 +133,8 @@ class NotionToMarkdown(NotionToMarkdownBase):
             return md_blocks
 
         for block in blocks:
+            if not isinstance(block, dict) or 'type' not in block:
+                continue
             if (block['type'] == 'unsupported' or
                     (block['type'] == 'child_page' and not self.config['parse_child_pages'])):
                 continue
@@ -419,6 +421,8 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
             return md_blocks
 
         for block in blocks:
+            if not isinstance(block, dict) or 'type' not in block:
+                continue
             if (block['type'] == 'unsupported' or
                     (block['type'] == 'child_page' and not self.config['parse_child_pages'])):
                 continue

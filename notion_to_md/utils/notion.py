@@ -56,7 +56,8 @@ def modify_numbered_list_object(blocks: List[Dict]) -> None:
     numbered_list_index = 0
 
     for block in blocks:
-        if block.get('type') == 'numbered_list_item':
+        if (isinstance(block, dict) and block.get('type') == 'numbered_list_item'
+                and isinstance(block.get('numbered_list_item'), dict)):
             numbered_list_index += 1
             block['numbered_list_item']['number'] = numbered_list_index
         else:

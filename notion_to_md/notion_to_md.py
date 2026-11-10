@@ -1,8 +1,11 @@
+import logging
 import re
 from typing import Dict, List, Optional, Union
 from notion_client import Client, AsyncClient
 from notion_to_md.utils import md
 from notion_to_md.utils.notion import get_block_children, get_block_children_async
+
+logger = logging.getLogger(__name__)
 
 
 class NotionToMarkdownBase:
@@ -82,6 +85,64 @@ class NotionToMarkdownBase:
 
         return md_output
 
+    @staticmethod
+    def _has_type(block) -> bool:
+        """Return True if block is a dict carrying a 'type' key."""
+        return isinstance(block, dict) and 'type' in block
+
+    @classmethod
+    def _is_convertible_block(cls, block) -> bool:
+        """Return True if a block from a block list has the keys the list
+        converters rely on ('type' and 'id'); log and return False otherwise."""
+        if cls._has_type(block) and 'id' in block:
+            return True
+        logger.warning("Skipping malformed Notion block (missing 'type' or 'id'): %r", block)
+        return False
+
+    @staticmethod
+    def _children_source_id(block: Dict) -> str:
+        """Return the block id whose children should be fetched. For a synced
+        block that references another block, this is the original block's id."""
+        if block['type'] == 'synced_block':
+            synced_from = (block.get('synced_block') or {}).get('synced_from') or {}
+            if synced_from.get('block_id'):
+                return synced_from['block_id']
+        return block['id']
+
+    @staticmethod
+    def _table_row_cells(child) -> Optional[List]:
+        """Return the cells of a table_row child, or None if it is not a
+        well-formed table row."""
+        if not isinstance(child, dict) or child.get('type') != 'table_row':
+            return None
+        return (child.get('table_row') or {}).get('cells', [])
+
+    def _comment_to_markdown(self, comment: Dict) -> str:
+        """Convert a Notion comment to markdown"""
+        if not isinstance(comment, dict) or 'rich_text' not in comment:
+            return ""
+
+        parsed_data = ""
+        block_content = comment.get("rich_text", [])
+        display_name = comment.get("display_name") or {}
+        name = display_name.get("resolved_name") or "Anonymous"
+        if name:
+            parsed_data += f"**{name}**: "
+        for content in block_content:
+            plain_text = content.get("plain_text", "")
+            annotations = content.get("annotations", {})
+
+            # Apply annotations to plain_text
+            plain_text = self._apply_annotations(plain_text, annotations)
+
+            # Add link if present
+            if content.get("href"):
+                plain_text = md.link(plain_text, content["href"])
+
+            parsed_data += plain_text
+
+        return parsed_data + "\n"
+
     def _apply_annotations(self, plain_text: str, annotations: Dict[str, bool]) -> str:
         if re.match(r'^\s*$', plain_text):
             return plain_text
@@ -133,21 +194,28 @@ class NotionToMarkdown(NotionToMarkdownBase):
             return md_blocks
 
         for block in blocks:
+            if not self._is_convertible_block(block):
+                continue
             if (block['type'] == 'unsupported' or
                     (block['type'] == 'child_page' and not self.config['parse_child_pages'])):
                 continue
 
+            content = self.block_to_markdown(block, _visited_block_ids)
+            if self.config['parse_comments']:
+                comments = self.notion_client.comments.list(block_id=block['id']).get('results', [])
+                if comments:
+                    content += "\n\nComments:\n"
+                    for c in comments:
+                        content += self.comment_to_markdown(c) + "\n"
+
             if block.get('has_children'):
-                block_id = (block['synced_block']['synced_from']['block_id']
-                            if block['type'] == 'synced_block' and
-                               block['synced_block'].get('synced_from')
-                            else block['id'])
+                block_id = self._children_source_id(block)
 
                 if block_id in _visited_block_ids:
                     md_blocks.append({
                         'type': block['type'],
                         'block_id': block['id'],
-                        'parent': self.block_to_markdown(block, _visited_block_ids),
+                        'parent': content,
                         'children': []
                     })
                     continue
@@ -159,7 +227,7 @@ class NotionToMarkdown(NotionToMarkdownBase):
                 md_blocks.append({
                     'type': block['type'],
                     'block_id': block['id'],
-                    'parent': self.block_to_markdown(block, _visited_block_ids),
+                    'parent': content,
                     'children': []
                 })
 
@@ -178,7 +246,7 @@ class NotionToMarkdown(NotionToMarkdownBase):
             md_blocks.append({
                 'type': block['type'],
                 'block_id': block['id'],
-                'parent': self.block_to_markdown(block, _visited_block_ids),
+                'parent': content,
                 'children': []
             })
 
@@ -186,7 +254,7 @@ class NotionToMarkdown(NotionToMarkdownBase):
 
     def block_to_markdown(self, block: Dict, _visited_block_ids: Optional[set] = None) -> str:
         """Convert a single Notion block to markdown"""
-        if not isinstance(block, dict) or 'type' not in block:
+        if not self._has_type(block):
             return ""
 
         if _visited_block_ids is None:
@@ -282,9 +350,8 @@ class NotionToMarkdown(NotionToMarkdownBase):
             if block.get("has_children"):
                 table_children = get_block_children(self.notion_client, block["id"])
                 for child in table_children:
-                    if child["type"] == "table_row":
-                        cells = child["table_row"].get("cells", [])
-
+                    cells = self._table_row_cells(child)
+                    if cells is not None:
                         # Convert each cell content to paragraphs and reuse block_to_markdown
                         row_content = [
                             self.block_to_markdown({
@@ -319,7 +386,7 @@ class NotionToMarkdown(NotionToMarkdownBase):
             # "audio"
             # "unsupported"
 
-            block_data = block.get(block_type, {})
+            block_data = block.get(block_type) or {}
             block_content = block_data.get("text", [])
             if not block_content:
                 block_content = block_data.get("rich_text", [])
@@ -395,6 +462,10 @@ class NotionToMarkdown(NotionToMarkdownBase):
 
         return parsed_data
 
+    def comment_to_markdown(self, comment: Dict) -> str:
+        """Convert a Notion comment to markdown"""
+        return self._comment_to_markdown(comment)
+
 
 class NotionToMarkdownAsync(NotionToMarkdownBase):
     def __init__(self, notion_client: AsyncClient, config: Dict = None):
@@ -419,6 +490,8 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
             return md_blocks
 
         for block in blocks:
+            if not self._is_convertible_block(block):
+                continue
             if (block['type'] == 'unsupported' or
                     (block['type'] == 'child_page' and not self.config['parse_child_pages'])):
                 continue
@@ -432,10 +505,7 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
                         content += await self.comment_to_markdown(c) + "\n"
 
             if block.get('has_children'):
-                block_id = (block['synced_block']['synced_from']['block_id']
-                            if block['type'] == 'synced_block' and
-                               block['synced_block'].get('synced_from')
-                            else block['id'])
+                block_id = self._children_source_id(block)
 
                 if block_id in _visited_block_ids:
                     md_blocks.append({
@@ -479,7 +549,7 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
 
     async def block_to_markdown(self, block: Dict, _visited_block_ids: Optional[set] = None) -> str:
         """Convert a single Notion block to markdown"""
-        if not isinstance(block, dict) or 'type' not in block:
+        if not self._has_type(block):
             return ""
 
         if _visited_block_ids is None:
@@ -575,9 +645,8 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
             if block.get("has_children"):
                 table_children = await get_block_children_async(self.notion_client, block["id"])
                 for child in table_children:
-                    if child["type"] == "table_row":
-                        cells = child["table_row"].get("cells", [])
-
+                    cells = self._table_row_cells(child)
+                    if cells is not None:
                         # Convert each cell content to paragraphs and reuse block_to_markdown
                         row_content = [
                             await self.block_to_markdown({
@@ -612,7 +681,7 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
             # "audio"
             # "unsupported"
 
-            block_data = block.get(block_type, {})
+            block_data = block.get(block_type) or {}
             block_content = block_data.get("text", [])
             if not block_content:
                 block_content = block_data.get("rich_text", [])
@@ -690,26 +759,4 @@ class NotionToMarkdownAsync(NotionToMarkdownBase):
 
     async def comment_to_markdown(self, comment: Dict) -> str:
         """Convert a Notion comment to markdown"""
-        if not isinstance(comment, dict) or 'rich_text' not in comment:
-            return ""
-
-        parsed_data = ""
-        block_content = comment.get("rich_text", [])
-        display_name = comment.get("display_name") or {}
-        name = display_name.get("resolved_name") or "Anonymous"
-        if name:
-            parsed_data += f"**{name}**: "
-        for content in block_content:
-            plain_text = content.get("plain_text", "")
-            annotations = content.get("annotations", {})
-
-            # Apply annotations to plain_text
-            plain_text = self._apply_annotations(plain_text, annotations)
-
-            # Add link if present
-            if content.get("href"):
-                plain_text = md.link(plain_text, content["href"])
-
-            parsed_data += plain_text
-
-        return parsed_data + "\n"
+        return self._comment_to_markdown(comment)

@@ -910,3 +910,137 @@ async def test_block_list_to_markdown_skips_blocks_without_type_async():
 
     assert len(result) == 1
     assert result[0]["block_id"] == "P"
+
+
+_MALFORMED_ENTRIES = [None, "not a block", ["list"], 42, {"type": "paragraph", "paragraph": {"rich_text": []}}]
+
+
+def test_block_list_to_markdown_skips_non_dict_and_idless_blocks(caplog):
+    n2m = NotionToMarkdown(notion_client=MagicMock())
+
+    with caplog.at_level("WARNING", logger="notion_to_md.notion_to_md"):
+        result = n2m.block_list_to_markdown(
+            _MALFORMED_ENTRIES + [_make_paragraph_block("P", "kept")])
+
+    assert [b["block_id"] for b in result] == ["P"]
+    assert len([r for r in caplog.records if "malformed" in r.getMessage()]) == len(_MALFORMED_ENTRIES)
+
+
+@pytest.mark.asyncio
+async def test_block_list_to_markdown_skips_non_dict_and_idless_blocks_async(caplog):
+    n2m = NotionToMarkdownAsync(notion_client=AsyncMock())
+
+    with caplog.at_level("WARNING", logger="notion_to_md.notion_to_md"):
+        result = await n2m.block_list_to_markdown(
+            _MALFORMED_ENTRIES + [_make_paragraph_block("P", "kept")])
+
+    assert [b["block_id"] for b in result] == ["P"]
+    assert len([r for r in caplog.records if "malformed" in r.getMessage()]) == len(_MALFORMED_ENTRIES)
+
+
+def test_block_list_to_markdown_does_not_fetch_children_of_typeless_block():
+    notion_client = MagicMock()
+    n2m = NotionToMarkdown(notion_client=notion_client)
+
+    result = n2m.block_list_to_markdown([{"id": "typeless", "has_children": True}])
+
+    assert result == []
+    notion_client.blocks.children.list.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_block_list_to_markdown_does_not_fetch_children_of_typeless_block_async():
+    notion_client = MagicMock()
+    notion_client.blocks.children.list = AsyncMock()
+    n2m = NotionToMarkdownAsync(notion_client=notion_client)
+
+    result = await n2m.block_list_to_markdown([{"id": "typeless", "has_children": True}])
+
+    assert result == []
+    notion_client.blocks.children.list.assert_not_called()
+
+
+def test_synced_block_without_payload_uses_own_id():
+    notion_client = MagicMock()
+    notion_client.blocks.children.list.return_value = _children_response(
+        [_make_paragraph_block("C", "child")])
+    n2m = NotionToMarkdown(notion_client=notion_client)
+
+    result = n2m.block_list_to_markdown(
+        [{"id": "S", "type": "synced_block", "has_children": True}])
+
+    notion_client.blocks.children.list.assert_called_once_with(start_cursor=None, block_id="S")
+    assert result[0]["children"][0]["block_id"] == "C"
+
+
+@pytest.mark.asyncio
+async def test_synced_block_without_payload_uses_own_id_async():
+    notion_client = MagicMock()
+    notion_client.blocks.children.list = AsyncMock(return_value=_children_response(
+        [_make_paragraph_block("C", "child")]))
+    n2m = NotionToMarkdownAsync(notion_client=notion_client)
+
+    result = await n2m.block_list_to_markdown(
+        [{"id": "S", "type": "synced_block", "has_children": True, "synced_block": None}])
+
+    notion_client.blocks.children.list.assert_called_once_with(start_cursor=None, block_id="S")
+    assert result[0]["children"][0]["block_id"] == "C"
+
+
+def _table_children():
+    return _children_response([
+        {"id": "r0"},
+        None,
+        {"id": "r1", "type": "table_row"},
+        {"id": "r2", "type": "table_row", "table_row": {"cells": [
+            [{"type": "text", "plain_text": "a", "annotations": {}}],
+            [{"type": "text", "plain_text": "b", "annotations": {}}],
+        ]}},
+    ])
+
+
+def test_table_skips_malformed_rows():
+    notion_client = MagicMock()
+    notion_client.blocks.children.list.return_value = _table_children()
+    n2m = NotionToMarkdown(notion_client=notion_client)
+
+    md_out = n2m.block_to_markdown({"id": "T", "type": "table", "has_children": True, "table": {}})
+
+    assert "a" in md_out and "b" in md_out
+
+
+@pytest.mark.asyncio
+async def test_table_skips_malformed_rows_async():
+    notion_client = MagicMock()
+    notion_client.blocks.children.list = AsyncMock(return_value=_table_children())
+    n2m = NotionToMarkdownAsync(notion_client=notion_client)
+
+    md_out = await n2m.block_to_markdown({"id": "T", "type": "table", "has_children": True, "table": {}})
+
+    assert "a" in md_out and "b" in md_out
+
+
+def test_block_list_to_markdown_with_parse_comments_enabled_sync():
+    notion_client = MagicMock()
+    notion_client.comments.list.return_value = {"results": [{
+        "rich_text": [{"plain_text": "Great point!", "annotations": {}}],
+        "display_name": {"resolved_name": "John Doe"},
+    }]}
+    n2m = NotionToMarkdown(notion_client=notion_client, config={"parse_comments": True})
+
+    result = n2m.block_list_to_markdown([_make_paragraph_block("block-1", "This is a paragraph")])
+
+    notion_client.comments.list.assert_called_once_with(block_id="block-1")
+    assert "This is a paragraph" in result[0]["parent"]
+    assert "Comments:" in result[0]["parent"]
+    assert "**John Doe**: Great point!" in result[0]["parent"]
+
+
+def test_block_list_to_markdown_with_parse_comments_disabled_sync():
+    notion_client = MagicMock()
+    n2m = NotionToMarkdown(notion_client=notion_client)
+
+    result = n2m.block_list_to_markdown([_make_paragraph_block("block-1", "This is a paragraph")])
+
+    notion_client.comments.list.assert_not_called()
+    assert "Comments:" not in result[0]["parent"]
